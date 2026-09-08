@@ -1,3 +1,5 @@
+<p align='center'><img src="images/preview.png" style="width: 35%; height: auto;"></img></p>
+
 # A-Font
 
 Change your font systemwide! Be it a cute font, a normal font, or any fonts you find interesting, you can change it with A-Font!
