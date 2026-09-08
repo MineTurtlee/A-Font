@@ -19,6 +19,9 @@
 	
 	<key>Bold Font</key>
 	<string>Bold Font</string>
+
+	<key>Italic Font</key>
+	<string>Italic Font</string>
 	
 	<key>Blacklist</key>
 	<string>Blacklist</string>

@@ -2,10 +2,13 @@
 #import <CoreText/CoreText.h>
 #import <HBLog.h>
 #import <libroot.h>
+#import <rootless.h>
 #import "headers.h"
 
 static NSString *fontname;
+static NSString *italicfontname;
 static NSString *boldfontname;
+static NSString *bolditalicfontname;
 static BOOL enableSafari;
 static BOOL WebKitImportant;
 static BOOL isSpringBoard;
@@ -42,6 +45,8 @@ BOOL checkFont(NSString* font) {
 		|| [font isEqualToString:@"custom"]
 		|| [font isEqualToString:fontname]
 		|| (boldfontname && [font isEqualToString:boldfontname])
+		|| (italicfontname && [font isEqualToString:italicfontname])
+		|| (bolditalicfontname && [font isEqualToString:bolditalicfontname])
 	) return true;
 	else return false;
 }
@@ -49,6 +54,12 @@ BOOL checkFont(NSString* font) {
 BOOL isBoldFont(NSString* font) {
 	if(font == nil) return false;
 	if(([[font uppercaseString] containsString:@"BOLD"] || [[font uppercaseString] hasSuffix:@"B"])) return true;
+	else return false;
+}
+
+BOOL isItalicFont(NSString* font) {
+	if(font == nil) return false;
+	if(([[font uppercaseString] containsString:@"ITALIC"] || [[font uppercaseString] hasSuffix:@"I"])) return true;
 	else return false;
 }
 
@@ -122,9 +133,16 @@ static UIFont *defaultFont;
 %group Font
 %hook UIFontDescriptor
 - (id)fontDescriptorWithSymbolicTraits:(unsigned int)arg1 {
-	id orig = %orig;
-	if(orig == nil) return [UIFontDescriptor fontDescriptorWithName:fontname size:self.pointSize];
-	return orig;
+    id orig = %orig;
+    if(orig == nil) {
+        BOOL wantsBold = (arg1 & UIFontDescriptorTraitBold) != 0;
+        BOOL wantsItalic = (arg1 & UIFontDescriptorTraitItalic) != 0;
+        if(wantsBold && wantsItalic && bolditalicfontname) return [UIFontDescriptor fontDescriptorWithName:bolditalicfontname size:self.pointSize];
+        if(wantsBold && boldfontname) return [UIFontDescriptor fontDescriptorWithName:boldfontname size:self.pointSize];
+        if(wantsItalic && italicfontname) return [UIFontDescriptor fontDescriptorWithName:italicfontname size:self.pointSize];
+        return [UIFontDescriptor fontDescriptorWithName:fontname size:self.pointSize];
+    }
+    return orig;
 }
 %end
 %hook UIFont
@@ -132,9 +150,15 @@ static UIFont *defaultFont;
 + (id)fontWithName:(NSString *)arg1 size:(double)arg2 {
 	// if([arg1 containsString:@"disableAFont"]) return %orig([arg1 stringByReplacingOccurrencesOfString:@"disableAFont" withString:@""], arg2);
 	if(checkFont(arg1)) return %orig;
-	if([arg1 isEqualToString:boldfontname]) return %orig(boldfontname, getSize(arg2));
-	if([arg1 containsString:@"Bold"]) return %orig(boldfontname, getSize(arg2));
-  else return %orig(fontname, getSize(arg2));
+
+	BOOL wantsBold = [arg1 isEqualToString:boldfontname] || [arg1 containsString:@"Bold"];
+	BOOL wantsItalic = [arg1 isEqualToString:italicfontname] || [arg1 containsString:@"Italic"];
+
+	if([arg1 isEqualToString:bolditalicfontname]) return %orig(bolditalicfontname, getSize(arg2));
+	if(wantsBold && wantsItalic && bolditalicfontname) return %orig(bolditalicfontname, getSize(arg2));
+	if(wantsBold) return %orig(boldfontname, getSize(arg2));
+	if(wantsItalic) return %orig(italicfontname, getSize(arg2));
+	return %orig(fontname, getSize(arg2));
 }
 %new
 + (id)fontWithNameWithoutAFont:(NSString *)arg1 size:(double)arg2 {
@@ -147,9 +171,15 @@ static UIFont *defaultFont;
 }
 + (id)fontWithName:(NSString *)arg1 size:(double)arg2 traits:(int)arg3 {
 	if([arg1 containsString:@"disableAFont"]) return %orig([arg1 stringByReplacingOccurrencesOfString:@"disableAFont" withString:@""], arg2, arg3);
-  if(checkFont(arg1)) return %orig;
-	if([arg1 isEqualToString:boldfontname]) return %orig(boldfontname, getSize(arg2), arg3);
-  else return %orig(fontname, getSize(arg2), arg3);
+	if(checkFont(arg1)) return %orig;
+
+	BOOL wantsBold = (arg3 & UIFontDescriptorTraitBold) || [arg1 isEqualToString:boldfontname];
+	BOOL wantsItalic = (arg3 & UIFontDescriptorTraitItalic) || [arg1 isEqualToString:italicfontname];
+
+	if(wantsBold && wantsItalic && bolditalicfontname) return %orig(bolditalicfontname, getSize(arg2), arg3);
+	if(wantsBold) return %orig(boldfontname, getSize(arg2), arg3);
+	if(wantsItalic) return %orig(italicfontname, getSize(arg2), arg3);
+	return %orig(fontname, getSize(arg2), arg3);
 }
 + (id)fontWithFamilyName:(NSString *)arg1 traits:(int)arg2 size:(double)arg3 {
   return [self fontWithName:fontname size:arg3 traits:arg2];
@@ -231,13 +261,27 @@ static UIFont *defaultFont;
 	attributes[@"NSCTFontSizeCategoryAttribute"] = nil;
 	attributes[@"NSFontNameAttribute"] = fontname;
 	UIFontDescriptor *d = [[UIFontDescriptor fontDescriptorWithFontAttributes:attributes] fontDescriptorWithSize:arg2 != 0 ? arg2 : arg1.pointSize];
-	if(boldfontname && (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold)) d = [d fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
+
+	BOOL wantsBold = (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+	BOOL wantsItalic = (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitItalic) != 0;
+
+	if(wantsBold && wantsItalic && bolditalicfontname) d = [UIFontDescriptor fontDescriptorWithName:bolditalicfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+	else if(wantsBold && boldfontname) d = [UIFontDescriptor fontDescriptorWithName:boldfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+	else if(wantsItalic && italicfontname) d = [UIFontDescriptor fontDescriptorWithName:italicfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+
 	UIFont *result = %orig(d, 0);
 
-	if(![result.fontName isEqualToString:defaultFont.fontName] && (boldfontname ? ![result.fontName isEqualToString:boldfontname] : true)) {
+	if(![result.fontName isEqualToString:defaultFont.fontName]
+		&& (boldfontname ? ![result.fontName isEqualToString:boldfontname] : true)
+		&& (italicfontname ? ![result.fontName isEqualToString:italicfontname] : true)
+		&& (bolditalicfontname ? ![result.fontName isEqualToString:bolditalicfontname] : true)) {
 		// if new method is not working, use old method.
 		d = [UIFontDescriptor fontDescriptorWithName:fontname size:arg2 != 0 ? arg2 : arg1.pointSize];
-		if(arg1.symbolicTraits & UIFontDescriptorTraitBold && boldfontname) d = [UIFontDescriptor fontDescriptorWithName:boldfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+		BOOL wantsBold2 = (arg1.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+		BOOL wantsItalic2 = (arg1.symbolicTraits & UIFontDescriptorTraitItalic) != 0;
+		if(wantsBold2 && wantsItalic2 && bolditalicfontname) d = [UIFontDescriptor fontDescriptorWithName:bolditalicfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+		else if(wantsBold2 && boldfontname) d = [UIFontDescriptor fontDescriptorWithName:boldfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
+		else if(wantsItalic2 && italicfontname) d = [UIFontDescriptor fontDescriptorWithName:italicfontname size:arg2 != 0 ? arg2 : arg1.pointSize];
 		return %orig(d, 0);
 	}
 	return result;
@@ -248,7 +292,12 @@ static UIFont *defaultFont;
 }
 -(id)initWithCoder:(id)arg1 {
 	UIFont *ret = %orig;
-	if(boldfontname && (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold)) return [ret initWithName:boldfontname size:ret.pointSize];
+	BOOL wantsBold = (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+	BOOL wantsItalic = (ret.fontDescriptor.symbolicTraits & UIFontDescriptorTraitItalic) != 0;
+
+	if(wantsBold && wantsItalic && bolditalicfontname) return [ret initWithName:bolditalicfontname size:ret.pointSize];
+	if(wantsBold && boldfontname) return [ret initWithName:boldfontname size:ret.pointSize];
+	if(wantsItalic && italicfontname) return [ret initWithName:italicfontname size:ret.pointSize];
 	return [ret initWithName:fontname size:ret.pointSize];
 }
 %end
@@ -320,7 +369,7 @@ static UIFont *defaultFont;
 		NSBlockOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
 			NSURL *url = [NSURL URLWithString:item[@"url"]];
 			NSData *data = [NSData dataWithContentsOfURL:url];
-			NSString *filename = [NSString stringWithFormat:@"/Library/A-Font/%@.%@", item[@"name"], [url pathExtension]];
+			NSString *filename = [NSString stringWithFormat:JBROOT_PATH_NSSTRING(@"/Library/A-Font/%@.%@"), item[@"name"], [url pathExtension]];
 			NSLog(@"[AFont] download file %@ %@ %@", item[@"url"], filename, data);
 			[data writeToFile:filename atomically:YES];
 		}];
@@ -389,15 +438,18 @@ BOOL loaded = false;
 %end
 %end
 
-NSString *findBoldFont(NSArray *list, NSString *name) {
-	NSString *orig_font = [name stringByReplacingOccurrencesOfString:@" R" withString:@""];
-	orig_font = [name stringByReplacingOccurrencesOfString:@"" withString:@""];
-	orig_font = [name stringByReplacingOccurrencesOfString:@" Regular" withString:@""];
-	orig_font = [name stringByReplacingOccurrencesOfString:@"Regular" withString:@""];
-	orig_font = [name stringByReplacingOccurrencesOfString:@"-Regular" withString:@""];
+NSString *stripToBaseName(NSString *name) {
+	NSString *orig_font = [name stringByReplacingOccurrencesOfString:@" Regular" withString:@""];
+	orig_font = [orig_font stringByReplacingOccurrencesOfString:@"-Regular" withString:@""];
+	orig_font = [orig_font stringByReplacingOccurrencesOfString:@"Regular" withString:@""];
 	NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"R$" options:0 error:nil];
 	orig_font = [regex stringByReplacingMatchesInString:orig_font options:0 range:NSMakeRange(0, [orig_font length]) withTemplate:@""];
 	orig_font = [orig_font stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+	return orig_font;
+}
+
+NSString *findBoldFont(NSArray *list, NSString *name) {
+	NSString *orig_font = stripToBaseName(name);
 
 	if([list containsObject:[NSString stringWithFormat:@"%@-Bold", orig_font]]) return [NSString stringWithFormat:@"%@-Bold", orig_font];
 	if([list containsObject:[NSString stringWithFormat:@"%@-B", orig_font]]) return [NSString stringWithFormat:@"%@-B", orig_font];
@@ -406,6 +458,30 @@ NSString *findBoldFont(NSArray *list, NSString *name) {
 	if([list containsObject:[NSString stringWithFormat:@"%@ Bold", orig_font]]) return [NSString stringWithFormat:@"%@ Bold", orig_font];
 	if([list containsObject:[NSString stringWithFormat:@"%@ B", orig_font]]) return [NSString stringWithFormat:@"%@ B", orig_font];
 	return name;
+}
+
+NSString *findItalicFont(NSArray *list, NSString *name) {
+	NSString *orig_font = stripToBaseName(name);
+
+	if([list containsObject:[NSString stringWithFormat:@"%@-Italic", orig_font]]) return [NSString stringWithFormat:@"%@-Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@-I", orig_font]]) return [NSString stringWithFormat:@"%@-I", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@Italic", orig_font]]) return [NSString stringWithFormat:@"%@Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@I", orig_font]]) return [NSString stringWithFormat:@"%@I", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@ Italic", orig_font]]) return [NSString stringWithFormat:@"%@ Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@ I", orig_font]]) return [NSString stringWithFormat:@"%@ I", orig_font];
+	return name;
+}
+
+NSString *findBoldItalicFont(NSArray *list, NSString *boldName, NSString *regularName) {
+	NSString *orig_font = stripToBaseName(regularName);
+
+	if([list containsObject:[NSString stringWithFormat:@"%@-BoldItalic", orig_font]]) return [NSString stringWithFormat:@"%@-BoldItalic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@-Bold-Italic", orig_font]]) return [NSString stringWithFormat:@"%@-Bold-Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@BoldItalic", orig_font]]) return [NSString stringWithFormat:@"%@BoldItalic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@ Bold Italic", orig_font]]) return [NSString stringWithFormat:@"%@ Bold Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@-BI", orig_font]]) return [NSString stringWithFormat:@"%@-BI", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@BI", orig_font]]) return [NSString stringWithFormat:@"%@BI", orig_font];
+	return boldName; // fallback: no distinct bold-italic exists, use bold
 }
 
 NSArray *getFullFontList() {
@@ -428,9 +504,9 @@ NSArray *getFullFontList() {
 
 	NSString *execPath = args[0];
 	// isEqualToString and rangeOfString is crashed on some internal processes?
-	BOOL isSpringBoard = strcmp([[execPath lastPathComponent] UTF8String], "SpringBoard") == 0;
+	BOOL isSpringBoardProcess = strcmp([[execPath lastPathComponent] UTF8String], "SpringBoard") == 0;
 	BOOL isApplication = strstr([execPath UTF8String], "/Application") != nil;
-	if(!isSpringBoard && !isApplication) return;
+	if(!isSpringBoardProcess && !isApplication) return;
 
 	identifier = [NSBundle mainBundle].bundleIdentifier;
 	if([identifier isEqualToString:@"com.apple.photos.VideoConversionService"] || [identifier isEqualToString:@"com.apple.springboard.SBRendererService"] || [identifier isEqualToString:@"com.apple.Search.Framework"]) return;
@@ -475,6 +551,20 @@ NSArray *getFullFontList() {
 
 	fontname = [fontname copy];
 	boldfontname = [boldfontname copy];
+
+	if(fontname != nil) {
+		if(!plistDict[@"italicfont"] || [plistDict[@"italicfont"] isEqualToString:@"Automatic"]) italicfontname = findItalicFont(fullFontList, fontname);
+		else italicfontname = plistDict[@"italicfont"];
+	} else italicfontname = nil;
+
+	italicfontname = [italicfontname copy];
+
+	if(fontname != nil && boldfontname != nil) {
+		if(!plistDict[@"boldItalicFont"] || [plistDict[@"boldItalicFont"] isEqualToString:@"Automatic"]) bolditalicfontname = findBoldItalicFont(fullFontList, boldfontname, fontname);
+		else bolditalicfontname = plistDict[@"boldItalicFont"];
+	} else bolditalicfontname = nil;
+	bolditalicfontname = [bolditalicfontname copy];
+
 	size = [size copy];
 
 	enableSafari = [plistDict[@"enableSafari"] boolValue];

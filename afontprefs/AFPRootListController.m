@@ -37,6 +37,25 @@ NSString *findBoldFont(NSArray *list, NSString *name) {
 	return name;
 }
 
+/* NSString *findItalicFont(NSArray *list, NSString *name) {
+	NSString *orig_font = [name stringByReplacingOccurrencesOfString:@" R" withString:@""];
+	orig_font = [name stringByReplacingOccurrencesOfString:@"" withString:@""];
+	orig_font = [name stringByReplacingOccurrencesOfString:@" Regular" withString:@""];
+	orig_font = [name stringByReplacingOccurrencesOfString:@"Regular" withString:@""];
+	orig_font = [name stringByReplacingOccurrencesOfString:@"-Regular" withString:@""];
+	NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"R$" options:0 error:nil];
+	orig_font = [regex stringByReplacingMatchesInString:orig_font options:0 range:NSMakeRange(0, [orig_font length]) withTemplate:@""];
+	orig_font = [orig_font stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+
+	if([list containsObject:[NSString stringWithFormat:@"%@-Italic", orig_font]]) return [NSString stringWithFormat:@"%@-Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@-I", orig_font]]) return [NSString stringWithFormat:@"%@-I", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@Italic", orig_font]]) return [NSString stringWithFormat:@"%@Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@I", orig_font]]) return [NSString stringWithFormat:@"%@I", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@ Italic", orig_font]]) return [NSString stringWithFormat:@"%@ Italic", orig_font];
+	if([list containsObject:[NSString stringWithFormat:@"%@ I", orig_font]]) return [NSString stringWithFormat:@"%@ I", orig_font];
+	return name;
+} */
+
 NSArray *getFullFontList() {
 	NSArray *fonts = [UIFont familyNames];
 	NSMutableArray *fullList = [NSMutableArray new];
@@ -121,6 +140,12 @@ BOOL clearDir(NSString *dir) {
 		[_boldFontSpecifier.properties setValue:@"valuesSource:" forKey:@"valuesDataSource"];
 		[_boldFontSpecifier.properties setValue:@"valuesSource:" forKey:@"titlesDataSource"];
 		[specifiers addObject:_boldFontSpecifier];
+
+		/* PSSpecifier *_italicFontSpecifier = [PSSpecifier preferenceSpecifierNamed:LocalizeString(@"Italic Font") target:self set:@selector(setFont:forSpecifier:) get:@selector(getFont:) detail:[PSListItemsController class] cell:PSLinkListCell edit:nil];
+		[_italicFontSpecifier.properties setValue:@"valuesSource:" forKey:@"valuesDataSource"];
+		[_italicFontSpecifier.properties setValue:@"valuesSource:" forKey:@"titlesDataSource"];
+		[specifiers addObject:_italicFontSpecifier]; */
+
 		[specifiers addObject:[PSSpecifier preferenceSpecifierNamed:LocalizeString(@"Blacklist") target:nil set:nil get:nil detail:[AFPBlackListController class] cell:PSLinkListCell edit:nil]];
 
 		// [specifiers addObject:[PSSpecifier preferenceSpecifierNamed:LocalizeString(@"Browse fonts from online") target:nil set:nil get:nil detail:[AFPBrowseController class] cell:PSLinkListCell edit:nil]];
@@ -209,15 +234,22 @@ BOOL clearDir(NSString *dir) {
 - (void)setFont:(NSString *)fontName forSpecifier:(PSSpecifier*)specifier {
 	if([fontName hasPrefix:@"Automatic ("]) fontName = @"Automatic";
 	if([specifier.name isEqualToString:LocalizeString(@"Bold Font")]) prefs[@"boldfont"] = fontName;
+	// if([specifier.name isEqualToString:LocalizeString(@"Italic Font")]) prefs[@"italicfont"] = fontName;
 	else prefs[@"font"] = fontName;
 	[[prefs copy] writeToFile:PREFERENCE_IDENTIFIER atomically:FALSE];
 }
 - (NSString *)getFont:(PSSpecifier *)specifier {
 	NSArray *fullList = getFullFontList();
 	NSString *boldfont;
+	// NSString *italicfont;
 	if(!prefs[@"font"]) boldfont = @"Please select font.";
 	else boldfont = findBoldFont(fullList, prefs[@"font"]);
+ 
+	// if(!prefs[@"font"]) italicfont = @"Please select font.";
+	// else italicfont = findItalicFont(fullList, prefs[@"font"]);
+
 	if([specifier.name isEqualToString:LocalizeString(@"Bold Font")]) return (![prefs[@"boldfont"] isEqualToString:@"Automatic"] ? prefs[@"boldfont"] : [NSString stringWithFormat:@"Automatic (%@)", boldfont]);
+	// if([specifier.name isEqualToString:LocalizeString(@"Italic Font")]) return (![prefs[@"italicfont"] isEqualToString:@"Automatic"] ? prefs[@"italicfont"] : [NSString stringWithFormat:@"Automatic (%@)", italicfont]);
 	else return prefs[@"font"];
 }
 - (NSArray *)valuesSource:(PSSpecifier *)target {
@@ -225,10 +257,16 @@ BOOL clearDir(NSString *dir) {
 	if(![target.name isEqualToString:LocalizeString(@"Font")]) {
 		NSArray *fullList = getFullFontList();
 		dic = [[fullList sortedArrayUsingSelector:@selector(compare:)] mutableCopy];
+		
 		NSString *boldfont;
 		if(!prefs[@"font"]) boldfont = @"Please select font.";
 		else boldfont = findBoldFont(fullList, prefs[@"font"]);
 		[dic insertObject:[NSString stringWithFormat:@"Automatic (%@)", boldfont] atIndex:0];
+
+		/* NSString *italicfont;
+		if(!prefs[@"font"]) italicfont = @"Please select font.";
+		else italicfont = findItalicFont(fullList, prefs[@"font"]);
+		[dic insertObject:[NSString stringWithFormat:@"Automatic (%@)", italicfont] atIndex:0]; */
 	}
 	return dic;
 }
