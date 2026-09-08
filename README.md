@@ -25,7 +25,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/i
 <details>
     <summary>Windows users</summary>
 
-    Install a Linux distro following [Microsoft's instructions](https://aka.ms/wslinstall)
+Install a Linux distro following [Microsoft's instructions](https://aka.ms/wslinstall)
 </details>
 
 2. Grab the SDK and copy it to your Theos SDKs directory
